@@ -17,20 +17,22 @@ import torch
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from env import FrankaCubeLift  # noqa: E402
-from collect_demos import observe, GRIPPER_SCALE  # noqa: E402
-from train_bc import MLPPolicy  # noqa: E402
+from collect_demos import GRIPPER_SCALE  # noqa: E402
+from train_bc import MLPPolicy, policy_obs, GRIP_THRESHOLD  # noqa: E402
 
 DEC = 10          # 500 Hz physics -> 50 Hz control
 FPS = 50          # render every control step => real time
 
 
 def episode_frames(env, policy, norm, cube_xy, device, camera, width, height,
-                   max_steps=700, post_lift=40):
+                   max_steps=700, post_lift=40, frame="world", grip_loss="mse",
+                   time_feature=False):
     env.reset(cube_xy=cube_xy)
     obs_mean, obs_std, act_mean, act_std = norm
     frames, lifted_at = [], None
+    n_closed = 0
     for t in range(max_steps):
-        o = observe(env)
+        o = policy_obs(env, frame, time_feature, n_closed)
         with torch.no_grad():
             x = torch.as_tensor((o - obs_mean) / obs_std, dtype=torch.float32,
                                 device=device).unsqueeze(0)
@@ -38,8 +40,9 @@ def episode_frames(env, policy, norm, cube_xy, device, camera, width, height,
         arm_target = np.clip(
             env.arm_qpos + a[:7], env.arm_limits[:, 0], env.arm_limits[:, 1]
         )
-        grip = float(np.clip(a[7], 0.0, 1.0)) * GRIPPER_SCALE
+        grip = float(a[7] > GRIP_THRESHOLD[grip_loss]) * GRIPPER_SCALE  # as in train_bc.py
         env.step(arm_target, grip, n_substeps=DEC)
+        n_closed = n_closed + 1 if grip == 0 else 0
         frames.append(env.render(camera=camera, width=width, height=height))
         # Keep running briefly past the success check so the lift is visible.
         if lifted_at is None and env.lifted():
@@ -73,7 +76,10 @@ def main():
     for i in range(args.episodes):
         xy = np.array([0.55, 0.0]) + rng.uniform([-0.08, -0.15], [0.08, 0.15])
         frames, ok = episode_frames(env, policy, ck["norm"], xy, device,
-                                    args.camera, args.width, args.height)
+                                    args.camera, args.width, args.height,
+                                    frame=ck.get("frame", "world"),
+                                    grip_loss=ck.get("grip_loss", "mse"),
+                                    time_feature=ck.get("time_feature", False))
         all_frames.extend(frames)
         results.append(ok)
         print(f"episode {i}: cube_xy=({xy[0]:.3f}, {xy[1]:.3f})  "

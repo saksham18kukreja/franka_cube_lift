@@ -10,7 +10,8 @@ demos/
 # Reference clone of kevinzakka/mjctrl (only cited in comments)
 vendor_mjctrl/
 
-# Rendered videos (keep the 3000-demo BC rollout)
+# Rendered videos (keep the v1.0 and v3.0 rollouts and the README preview)
 videos/*
 !videos/bc_clean3000.mp4
-!videos/bc_clean3000_preview.gif
+!videos/bc_both_bce_time.mp4
+!videos/bc_both_bce_time_preview.gif
