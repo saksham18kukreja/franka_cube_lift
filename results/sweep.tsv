@@ -1,0 +1,8 @@
+demos	epochs	seed	val_mse	success
+state_demos	340	0	0.01609	48.0
+state_demos	340	1	0.00532	52.0
+state_demos	340	2	0.01247	60.0
+clean1000	100	0	0.01400	68.0
+clean1000	100	1	0.01167	38.0
+clean1000	100	2	0.01272	40.0
+clean1000	340	0	0.01026	22.0

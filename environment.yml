@@ -1,0 +1,12 @@
+name: franka_cube_lift
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      - mujoco==3.13.0
+      - numpy==2.4.6
+      - torch==2.5.1
+      - imageio==2.37.4
+      - imageio-ffmpeg==0.6.0

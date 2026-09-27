@@ -1,0 +1,14 @@
+# Conda env and caches
+.env/
+.venv/
+__pycache__/
+*.pyc
+
+# Large / regenerable data (scripts/collect_demos.py)
+demos/
+
+# Reference clone of kevinzakka/mjctrl (only cited in comments)
+vendor_mjctrl/
+
+# Rendered videos
+videos/
