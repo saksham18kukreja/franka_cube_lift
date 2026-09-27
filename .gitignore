@@ -13,3 +13,4 @@ vendor_mjctrl/
 # Rendered videos (keep the 3000-demo BC rollout)
 videos/*
 !videos/bc_clean3000.mp4
+!videos/bc_clean3000_preview.gif

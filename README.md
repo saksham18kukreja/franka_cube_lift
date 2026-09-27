@@ -4,6 +4,11 @@ Behaviour cloning on a Franka Panda cube-lift task in MuJoCo. A scripted
 controller (`scripts/controller.py`) generates demonstrations; an MLP policy
 (`scripts/train_bc.py`) learns to imitate it from state.
 
+[![BC policy lifting the cube](videos/bc_clean3000_preview.gif)](videos/bc_clean3000.mp4)
+
+*BC policy trained on 3000 demos (world frame, seed 0, 86% success), two eval
+episodes in real time. Click for the full 6-episode video.*
+
 ## Setup
 
 ```bash
@@ -57,9 +62,6 @@ Rollout success over 50 fixed cube positions (eval rng seed 1234).
 | world | 86% | 12% | 78% | 58.7% |
 | gripper | 84% | 90% | 4% | 59.3% |
 | both | 16% | 98% | 78% | 64.0% |
-
-`videos/bc_clean3000.mp4`: the world-frame seed-0 policy (86%) on the first 6
-eval positions, all lifted (`scripts/make_bc_video.py`).
 
 Takeaways:
 
