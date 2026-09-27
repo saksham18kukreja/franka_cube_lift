@@ -58,6 +58,9 @@ Rollout success over 50 fixed cube positions (eval rng seed 1234).
 | gripper | 84% | 90% | 4% | 59.3% |
 | both | 16% | 98% | 78% | 64.0% |
 
+`videos/bc_clean3000.mp4`: the world-frame seed-0 policy (86%) on the first 6
+eval positions, all lifted (`scripts/make_bc_video.py`).
+
 Takeaways:
 
 - Runs are bimodal: each either works (78–98%) or collapses (4–16%),

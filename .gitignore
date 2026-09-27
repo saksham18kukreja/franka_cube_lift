@@ -10,5 +10,6 @@ demos/
 # Reference clone of kevinzakka/mjctrl (only cited in comments)
 vendor_mjctrl/
 
-# Rendered videos
-videos/
+# Rendered videos (keep the 3000-demo BC rollout)
+videos/*
+!videos/bc_clean3000.mp4
