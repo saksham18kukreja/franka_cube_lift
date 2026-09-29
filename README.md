@@ -69,17 +69,6 @@ number (`benchmark.py --raw-grip` reproduces v1.0).
 | v2.0 | 95.4 | 86.8% | 93.0% | 1.08 | 92.3% |
 | **v3.0** | **100** | **100%** | **100%** | **1.00** | **100%** |
 
-![Held-out benchmark by version](results/benchmark_versions.png)
-
-Per seed (seed 0 / 1 / 2):
-
-| Version | Stage score | Success@1 | Success@3 | Mean attempts |
-|---|---|---|---|---|
-| v1.0 | 90.5 / 12.0 / 91.6 | 79.0 / 12.0 / 85.0% | 93.5 / 13.0 / 96.0% | 1.20 / 1.08 / 1.15 |
-| v1.1 | 97.5 / 98.2 / 87.8 | 95.0 / 96.5 / 75.5% | 98.0 / 98.5 / 96.5% | 1.04 / 1.03 / 1.26 |
-| v2.0 | 98.8 / 95.3 / 92.0 | 92.5 / 89.5 / 78.5% | 92.5 / 97.5 / 89.0% | 1.00 / 1.10 / 1.13 |
-| v3.0 | 100 / 100 / 100 | 100 / 100 / 100% | 100 / 100 / 100% | 1.00 / 1.00 / 1.00 |
-
 Stage funnel, % of positions reaching each stage on attempt 1 (mean over seeds):
 
 | Version | reach | close | grasp | rise | lift | hold |
