@@ -15,3 +15,5 @@ videos/*
 !videos/bc_clean3000.mp4
 !videos/bc_both_bce_time.mp4
 !videos/bc_both_bce_time_preview.gif
+!videos/system_color.mp4
+!videos/system_color_preview.gif

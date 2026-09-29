@@ -2,15 +2,21 @@
 
 Behaviour cloning on a Franka Panda cube-lift task in MuJoCo. A scripted
 controller (`scripts/controller.py`) generates demonstrations; an MLP policy
-(`scripts/train_bc.py`) learns to imitate it from state.
+(`scripts/train_bc.py`) learns to imitate it from state. Since v4.0 the cube's
+position comes from a camera and detector instead of the simulator.
 
 This cube-lift policy is the first skill of a larger goal: a harness for an
 agentic robotics system. See [PLAN.md](PLAN.md) for the roadmap.
 
-[![BC policy v3.0 lifting the cube](videos/bc_both_bce_time_preview.gif)](videos/bc_both_bce_time.mp4)
+[![v4.0 system: robot scene and detector view](videos/system_color_preview.gif)](videos/system_color.mp4)
 
-*Policy v3.0 (seed 0, 100% success), two eval episodes in real time. Click for
-the full 6-episode video.*
+*v4.0, the whole system at 2× speed. Left: the robot. Right: what `table_cam`
+sees, with the detected red pixels tinted and a wireframe cube at the position
+the policy is using (green = accepted detection, orange = rejected, holding the
+last estimate, red = no estimate yet); the white dot is the true centre. The
+last clip is the start-of-episode blind spot (seed 2, position 151): the hand
+hides the cube, attempt 1 fails, the retry succeeds. Click for the full
+real-time video.*
 
 ## Versions
 
@@ -23,7 +29,8 @@ lenient success on the 50-position set used while debugging; the held-out
 | v1.0 | Baseline | 17 (world) | MSE, raw command | 86 / 12 / 78% | 58.7% |
 | v1.1 | Snap gripper to open/closed at rollout | 17 (world) | MSE, snapped | 98 / 96 / 76% | 90.0% |
 | v2.0 | Gripper as classifier; add gripper-frame cube position | 20 (both) | BCE logit | 100 / 92 / 80% | 90.7% |
-| **v3.0** | **Add steps-since-gripper-closed input** | **21 (both + counter)** | **BCE logit** | **100 / 100 / 100%** | **100%** |
+| v3.0 | Add steps-since-gripper-closed input | 21 (both + counter) | BCE logit | 100 / 100 / 100% | 100% |
+| **v4.0** | **Cube position from camera + color detector (v3.0 policy unchanged)** | **21, cube position estimated** | **BCE logit** | **not run on the debug set** | **—** |
 
 What each version fixed:
 
@@ -39,6 +46,9 @@ What each version fixed:
   the number of consecutive steps the gripper has been commanded closed
   (capped at 200, scaled by 1/100). It is built from the expert's labels in
   training and from the policy's own past gripper commands at rollout.
+- **v4.0**: removes the simulator's true cube position from the policy's
+  inputs. A fixed RGB-D camera and a color detector estimate it at 10 Hz; see
+  [Perception](#perception-v40).
 
 Train v3.0:
 
@@ -67,7 +77,8 @@ number (`benchmark.py --raw-grip` reproduces v1.0).
 | v1.0 | 64.7 | 58.7% | 67.5% | 1.14 | 58.7% |
 | v1.1 | 94.5 | 89.0% | 97.7% | 1.11 | 89.2% |
 | v2.0 | 95.4 | 86.8% | 93.0% | 1.08 | 92.3% |
-| **v3.0** | **100** | **100%** | **100%** | **1.00** | **100%** |
+| v3.0 | 100 | 100% | 100% | 1.00 | 100% |
+| **v4.0** (camera) | **99.3** | **99.3%** | **99.8%** | **1.01** | **99.3%** |
 
 Stage funnel, % of positions reaching each stage on attempt 1 (mean over seeds):
 
@@ -77,10 +88,14 @@ Stage funnel, % of positions reaching each stage on attempt 1 (mean over seeds):
 | v1.1 | 100 | 99.7 | 99.7 | 89.3 | 89.2 | 89.0 |
 | v2.0 | 100 | 100 | 100 | 93.0 | 92.3 | 86.8 |
 | v3.0 | 100 | 100 | 100 | 100 | 100 | 100 |
+| v4.0 | 99.3 | 99.3 | 99.3 | 99.3 | 99.3 | 99.3 |
 
 What the results show:
 
 - **v3.0 holds on unseen positions**: 600/600 first-attempt strict successes.
+- **v4.0 loses less than a point to perception** (99.3% first attempt, 99.8%
+  within 3). All its failures are the start-of-episode blind spot described in
+  [Perception](#perception-v40).
   The debug-set numbers track the held-out ones closely, so the debug set was
   not badly overfit.
 - **v1.0 fails at the approach** (69% reach) because of the gripper collapse;
@@ -103,6 +118,75 @@ python plot_benchmark.py        # results/benchmark_versions.png
 `benchmark.py` appends one row per checkpoint to `results/benchmark.tsv`
 (with the git commit). Options: `--positions`, `--attempts`, `--max-steps`,
 `--raw-grip`, `--no-log`.
+
+## Perception (v4.0)
+
+```
+table_cam (RGB-D, fixed) ──► color detector ──► 3D cube centre ──┐
+                                                                 ▼
+  joint angles, gripper width, gripper position ──────► v3.0 policy (unchanged)
+```
+
+- **Camera:** `table_cam` in `cube_lift_scene.xml`, fixed opposite the robot,
+  0.73 m from the workspace centre, 47° down, 45° field of view, 640×480
+  (`scripts/perception/camera.py`). Depth agrees with the scene geometry to
+  0.56 mm, and the cube is in view at all 200 benchmark positions.
+- **Detector** (`scripts/perception/detectors.py`): red-pixel mask → 3D points
+  from depth → cube centre from the extent of the visible faces (top face and
+  the face towards the camera, using the known 4 cm size).
+- **Rejection and memory:** a detection counts only if ≥ 60% of the expected
+  cube area is visible; otherwise the last good estimate is kept. Below 60%
+  the error is 3–34 mm; above it, 0.2 mm median (measured during v3.0
+  episodes). Before the first good detection, the workspace centre is used,
+  never the true position.
+- **Rate:** 10 Hz; the policy reuses the latest estimate in between.
+
+**Error budget** (v3.0 with a degraded true position, before building the
+detector; 3 seeds, 200 positions, 10 Hz):
+
+| Cube position error | Success@1 | Success@3 |
+|---|---|---|
+| none (10 Hz only) | 100% | 100% |
+| random, σ 1 mm | 100% | 100% |
+| random, σ 2 mm | 99.8% | 100% |
+| random, σ 5 mm | 92.7% | 98.2% |
+| random, σ 10 mm | 64.3% | 79.3% |
+| fixed offset 5 mm | 98.5% | 98.7% |
+| fixed offset 10 mm | 95.2% | 96.0% |
+
+The policy tolerates about 2 mm of random error and 5 mm of fixed offset.
+Beyond that the loss depends strongly on the seed (seed 2 falls to 23.5% at
+σ 10 mm).
+
+**Camera results** (v3.0 policy, 3 seeds, 200 held-out positions):
+
+| Cube position from | Success@1 (seeds 0 / 1 / 2) | Mean | Success@3 | Error median / p95 | Rejected |
+|---|---|---|---|---|---|
+| simulator (true) | 100 / 100 / 100 | 100% | 100% | 0 | — |
+| **camera + color detector** | 100 / 100 / 98 | **99.3%** | **99.8%** | 0.2 / 7.1 mm | 0.6% |
+| same, no rejection | 100 / 100 / 99 | 99.7% | 99.7% | 0.2 / 7.2 mm | 0.2% |
+
+- **The detector is well inside the error budget** (0.2 mm median). The 7 mm
+  95th percentile is the 10 Hz lag while the cube moves during the lift, which
+  the error budget shows is harmless.
+- **Rejection plus memory made no measurable difference.** Occlusion is rare
+  along the policy's own path, so there is seldom anything to hold.
+- **All failures are a start-of-episode blind spot.** For cubes close to the
+  robot (x ≈ 0.47–0.50 m, y ≈ 0) the hand at its start pose hides the cube, so
+  there is no good estimate yet. The policy starts from the workspace-centre
+  fallback (56–79 mm off) and seed 2 never recovers. Memory can't help at step
+  0; the planned fix is to make a valid detection a precondition for starting
+  the skill ("look before acting").
+
+Run it:
+
+```bash
+python benchmark.py ../models/bc_clean3000_both_bce_time_s{0,1,2}.pt \
+    --label v3.0 --perception color            # add --min-visible 0 for no rejection
+python benchmark.py <ckpt> --label v3.0 --perception noisy --pos-noise 5   # error budget
+python make_bc_video.py --overlay --perception color \
+    --clip ../models/bc_clean3000_both_bce_time_s0.pt:0 --out ../videos/system_color.mp4
+```
 
 ## Evaluation
 
@@ -236,12 +320,13 @@ success.
 
 ```
 scripts/   env, scripted expert, demo collection, BC training (train_bc.py),
-           held-out benchmark (benchmark.py, plot_benchmark.py), quick eval
+           perception/ (camera, detectors), held-out benchmark with
+           perception modes (benchmark.py, plot_benchmark.py), quick eval
            on the debug set (eval_bc.py), failure diagnosis (diag_collapse.py),
            video
 models/    Panda + cube scene (MuJoCo Menagerie based) and BC checkpoints
 results/   benchmark results and plot, dataset sweep
-videos/    v1.0 and v3.0 rollout videos and README previews
+videos/    rollout videos (v1.0, v3.0), the v4.0 system video, README previews
 ```
 
 The controller follows patterns from

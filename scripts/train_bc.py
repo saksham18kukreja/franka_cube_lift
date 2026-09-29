@@ -91,9 +91,17 @@ def demo_closed_counts(act, starts, lengths):
     return counts
 
 
-def policy_obs(env, frame, time_feature, n_closed):
-    """The observation the policy sees at rollout, matching load_demos."""
-    o = frame_features(observe(env), env.tcp_mat, frame).reshape(-1)
+def policy_obs(env, frame, time_feature, n_closed, cube_pos=None):
+    """The observation the policy sees at rollout, matching load_demos.
+
+    cube_pos overrides the simulator's cube position (e.g. a camera estimate);
+    every cube-derived feature is recomputed from it.
+    """
+    o = observe(env)
+    if cube_pos is not None:
+        o[11:14] = cube_pos
+        o[14:17] = cube_pos - o[8:11]  # cube - tcp
+    o = frame_features(o, env.tcp_mat, frame).reshape(-1)
     if time_feature:
         o = np.append(o, closed_feature(n_closed)).astype(np.float32)
     return o

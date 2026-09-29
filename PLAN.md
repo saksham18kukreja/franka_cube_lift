@@ -100,9 +100,15 @@ These are the hypotheses the phases are designed to test.
 steps-since-closed counter. **100% Success@1 on 3/3 seeds on the held-out
 benchmark** (200 unseen positions, strict hold-for-1-s success; 600/600).
 
-Limits of that 100%:
+**v4.0: the same policy from camera input**: 99.3% Success@1, 99.8%
+Success@3 on the held-out benchmark (fixed RGB-D camera + color detector).
 
-- Reads the exact cube position from the simulator (Phase 4 removes this).
+Limits:
+
+- A start-of-episode blind spot: the hand at its start pose hides cubes close
+  to the robot (all v4.0 failures).
+- The color detector relies on the cube being the only red object; a learned
+  detector is needed once the scene has more objects.
 - Narrow task: unrotated cube, no noise or disturbances, and positions only
   within the training range. A dropped cube can land outside it, and the
   policy can't recover from there (seen in v2.0 retries).
@@ -110,7 +116,7 @@ Limits of that 100%:
 
 ## Roadmap
 
-### Phase 0: Evaluation you can trust (next)
+### Phase 0: Evaluation you can trust (done)
 
 The harness is only as good as its success signal, so this comes first.
 
@@ -127,7 +133,40 @@ The harness is only as good as its success signal, so this comes first.
 Done when: v3.0 has test-set and strict-success numbers, both logged. **Met;
 only the tags remain.**
 
-### Phase 1: Skill interface and library
+### Phase 1: Perception (v4.0 done; one fix open)
+
+Question: *how much does replacing the simulator's true cube position with a
+camera and detector cost?*
+
+Modular design: `table_cam` (RGB-D) → detector → 3D cube position → the
+v3.0 policy, unchanged. Detection at 10 Hz; the last good estimate is kept when
+the cube is hidden (the first bit of harness memory). Every result is compared
+with true positions on the held-out benchmark.
+
+- [x] **Error budget**: v3.0 tolerates ~2 mm random error and ~5 mm fixed
+      offset; at σ 10 mm it drops to 64% (seed 2: 23.5%).
+- [x] **Camera module**: fixed `table_cam`, RGB/depth/segmentation, pixel →
+      3D; depth agrees with geometry to 0.56 mm.
+- [x] **Color baseline detector**: 0.2 mm median error; detections with
+      < 60% of the cube visible are rejected and the last estimate held.
+- [x] **Integrate and benchmark** (v4.0): 99.3% Success@1, 99.8% Success@3
+      from camera input; rejection/memory ablated (no measurable effect).
+- [x] **Occlusion analysis**: occlusion only matters at the episode start
+      (hand over cubes near the robot); rare along the policy's path.
+- [x] **System video** with detector overlay (`make_bc_video.py --overlay`).
+- [ ] **Look before acting**: don't start the skill without a valid
+      detection; move the arm out of the camera's view first if needed. Fixes
+      the remaining start-of-episode blind spot.
+- Deferred: **learned detector (YOLO)**, until the scene has several or
+  unfamiliar objects; the color detector is already 0.2 mm here.
+- Not needed: **retraining with position noise**; the detector is well inside
+  the error budget.
+
+Done when: v3.0 runs from camera input on the benchmark, with success,
+position error and failure rate logged for each perception mode. **Met
+(v4.0).**
+
+### Phase 2: Skill interface and library
 
 Question: *what does a skill need to expose to be usable by a harness?*
 
@@ -145,7 +184,7 @@ Question: *what does a skill need to expose to be usable by a harness?*
 
 Done when: each skill has skill success and handoff success, logged.
 
-### Phase 2: Harness v0, fixed sequences
+### Phase 3: Harness v0, fixed sequences
 
 Question: *how much does chaining lose, and why?*
 
@@ -156,7 +195,7 @@ Question: *how much does chaining lose, and why?*
 - [ ] **Measure** chain success vs product, and attribute every failure.
 - [ ] **Ablate** the verifier and the retries.
 
-### Phase 3: Planner as orchestrator
+### Phase 4: Planner as orchestrator
 
 Question: *are failures in the plan or in carrying it out?*
 
@@ -167,17 +206,17 @@ Question: *are failures in the plan or in carrying it out?*
 - [ ] **Measure** plan failures vs execution failures; compare against the
       scripted orchestrator.
 
-### Phase 4: Perception and memory
+### Phase 5: Memory and image-based skills
 
 Question: *what does memory buy you?*
 
-- [ ] **Camera rendering** in demos, plus a wrist camera.
-- [ ] **Image-based skills**: no cube pose from the simulator.
+- [ ] **Image-based skills** (end-to-end, images in, actions out), compared
+      with the Phase 1 modular pipeline.
 - [ ] **World-state memory**: object poses, task progress, skill history.
 - [ ] **Ablate memory** on tasks with objects that go out of view or with
       long horizons.
 
-### Phase 5: Recovery
+### Phase 6: Recovery
 
 Question: *which failures can the harness recover from, and which can't it?*
 
@@ -186,7 +225,7 @@ Question: *which failures can the harness recover from, and which can't it?*
 - [ ] **Recovery data**: DART-style noisy demos (`collect_demos.py --noise`).
 - [ ] **Measure** recovery rate per failure type.
 
-### Phase 6: Generalist vs specialists
+### Phase 7: Generalist vs specialists
 
 Question: *when does a generalist beat specialists plus a harness?*
 
@@ -208,11 +247,11 @@ needs it.
 
 ## Decisions to make
 
-- [ ] **Orchestrator** for Phase 3: API model (e.g. Claude) or a local
+- [ ] **Orchestrator** for Phase 4: API model (e.g. Claude) or a local
       small model.
 - [ ] **Simulator** for multi-object scenes: extend the current MuJoCo
       setup or adopt a framework (e.g. robosuite, ManiSkill, LIBERO).
-- [ ] **Compute** for Phase 6: whether cloud GPUs are available for VLA
+- [ ] **Compute** for Phase 7: whether cloud GPUs are available for VLA
       fine-tuning.
 
 ## Lessons so far
@@ -228,6 +267,12 @@ needs it.
 - **Diagnose by stage.** Breaking rollouts into reach / close / grasp / rise
   / lift found both failures quickly. The harness needs the same kind of
   failure attribution.
+- **Measure the error budget before building perception.** Degrading the
+  true position first showed the policy needs ~2 mm, so a simple detector was
+  enough and a learned one could wait.
+- **Memory can't help at step 0.** Holding the last estimate covers occlusion
+  mid-task, but the only real occlusion was at the start. A skill needs a
+  perception precondition before it starts.
 - **A retry only helps if the failure leaves a state the skill can handle.**
   v2.0's dropped cubes landed outside the training range and retries couldn't
   recover them. This is the handoff bottleneck, seen already with one skill.
@@ -244,3 +289,6 @@ needs it.
 | 2026-09-27 | v3.0 | Steps-since-closed input | 100% (3/3 seeds, standard eval) |
 | 2026-09-28 | — | Project goal set: agentic robotics harness; plan rewritten | — |
 | 2026-09-28 | — | Held-out benchmark (200 positions, stages, strict hold, 3 attempts) | Success@1: v1.0 58.7, v1.1 89.0, v2.0 86.8, v3.0 100% |
+| 2026-09-28 | — | Perception moved to Phase 1 (camera + detector before the skill interface) | — |
+| 2026-09-28 | — | Perception error budget (noisy cube position, 7 settings) | ≤2 mm random / ≤5 mm offset keeps ~100%; σ 10 mm → 64% |
+| 2026-09-29 | v4.0 | Camera + color detector replace the simulator's cube position | Success@1 99.3%, Success@3 99.8%; failures = start-of-episode blind spot |

@@ -38,6 +38,10 @@
 
     <camera name="grasp_cam" pos="1.25 -0.95 1.05" mode="targetbody" target="table"/>
     <camera name="front_cam" pos="1.70 0 0.85" mode="targetbody" target="table"/>
+    <!-- Perception camera: fixed, opposite the robot, ~47 deg down, aimed at the
+         workspace centre (0.55, 0, 0.42) from 0.73 m. Fixed pose so its
+         calibration is constant. -->
+    <camera name="table_cam" pos="1.05 0 0.95" xyaxes="0 1 0 -0.7274 0 0.6862" fovy="45"/>
   </worldbody>
 
   <!-- panda.xml's "home" key only specifies the 9 arm/finger qpos. This model

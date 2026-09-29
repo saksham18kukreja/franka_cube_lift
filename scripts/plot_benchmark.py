@@ -28,6 +28,8 @@ METRICS = [("stage_score", "Stage score"), ("success_1", "Success@1"),
 
 def load():
     rows = list(csv.DictReader(open(os.path.join(RESULTS, "benchmark.tsv")), delimiter="\t"))
+    # Version comparison uses ground-truth perception; perception runs are separate.
+    rows = [r for r in rows if r.get("perception", "gt") == "gt"]
     # Chronological order (v1.0 < v1.1 < v2.0 ...), not the order runs finished.
     versions = sorted({r["label"] for r in rows},
                       key=lambda v: [int(x) for x in v.lstrip("v").split(".")])
