@@ -14,10 +14,11 @@ the full 6-episode video.*
 
 ## Versions
 
-Rollout success over 50 fixed cube positions, 3 training seeds each
-(3000 demos, 100 epochs).
+3 training seeds per version (3000 demos, 100 epochs). The last column is
+lenient success on the 50-position set used while debugging; the held-out
+[benchmark](#benchmark-results) below is the number to report.
 
-| Version | Change | Inputs | Gripper | Seed 0 / 1 / 2 | Mean |
+| Version | Change | Inputs | Gripper | Debug set, seed 0 / 1 / 2 | Mean |
 |---|---|---|---|---|---|
 | v1.0 | Baseline | 17 (world) | MSE, raw command | 86 / 12 / 78% | 58.7% |
 | v1.1 | Snap gripper to open/closed at rollout | 17 (world) | MSE, snapped | 98 / 96 / 76% | 90.0% |
@@ -53,7 +54,124 @@ the standard eval with `python eval_bc.py <checkpoint>...`.
 
 v1.0 numbers use the original rollout, which sent the raw gripper output. The
 rollout now always snaps it, so re-evaluating a v1.0 checkpoint gives the v1.1
-number.
+number (`benchmark.py --raw-grip` reproduces v1.0).
+
+## Benchmark results
+
+200 held-out cube positions (never used for debugging), up to 3 attempts each,
+3 seeds per version. Mean over seeds; definitions in
+[Evaluation](#evaluation).
+
+| Version | Stage score | Success@1 | Success@3 | Mean attempts | Lifted@1 (old) |
+|---|---|---|---|---|---|
+| v1.0 | 64.7 | 58.7% | 67.5% | 1.14 | 58.7% |
+| v1.1 | 94.5 | 89.0% | 97.7% | 1.11 | 89.2% |
+| v2.0 | 95.4 | 86.8% | 93.0% | 1.08 | 92.3% |
+| **v3.0** | **100** | **100%** | **100%** | **1.00** | **100%** |
+
+![Held-out benchmark by version](results/benchmark_versions.png)
+
+Per seed (seed 0 / 1 / 2):
+
+| Version | Stage score | Success@1 | Success@3 | Mean attempts |
+|---|---|---|---|---|
+| v1.0 | 90.5 / 12.0 / 91.6 | 79.0 / 12.0 / 85.0% | 93.5 / 13.0 / 96.0% | 1.20 / 1.08 / 1.15 |
+| v1.1 | 97.5 / 98.2 / 87.8 | 95.0 / 96.5 / 75.5% | 98.0 / 98.5 / 96.5% | 1.04 / 1.03 / 1.26 |
+| v2.0 | 98.8 / 95.3 / 92.0 | 92.5 / 89.5 / 78.5% | 92.5 / 97.5 / 89.0% | 1.00 / 1.10 / 1.13 |
+| v3.0 | 100 / 100 / 100 | 100 / 100 / 100% | 100 / 100 / 100% | 1.00 / 1.00 / 1.00 |
+
+Stage funnel, % of positions reaching each stage on attempt 1 (mean over seeds):
+
+| Version | reach | close | grasp | rise | lift | hold |
+|---|---|---|---|---|---|---|
+| v1.0 | 69.2 | 69.2 | 69.2 | 63.3 | 58.7 | 58.7 |
+| v1.1 | 100 | 99.7 | 99.7 | 89.3 | 89.2 | 89.0 |
+| v2.0 | 100 | 100 | 100 | 93.0 | 92.3 | 86.8 |
+| v3.0 | 100 | 100 | 100 | 100 | 100 | 100 |
+
+What the results show:
+
+- **v3.0 holds on unseen positions**: 600/600 first-attempt strict successes.
+  The debug-set numbers track the held-out ones closely, so the debug set was
+  not badly overfit.
+- **v1.0 fails at the approach** (69% reach) because of the gripper collapse;
+  seed 1 fails the same way every time (12% → 13% with retries).
+- **v2.0 drops the cube**: 92.3% lifted but 86.8% held. Its failures are drops
+  during the lift or lifts too late to finish the hold.
+- **Retries help when failures leave a familiar scene.** v1.1 gains 8.7 points
+  from retries (failed attempts leave the cube in place). v2.0 gains 6.2: a
+  dropped cube tumbles to x ≈ 0.30 m, outside the 0.47–0.63 m training range,
+  and the retry heads the wrong way. This is an early case of the handoff
+  bottleneck in [PLAN.md](PLAN.md).
+
+Run it:
+
+```bash
+python benchmark.py ../models/bc_clean3000_both_bce_time_s{0,1,2}.pt --label v3.0
+python plot_benchmark.py        # results/benchmark_versions.png
+```
+
+`benchmark.py` appends one row per checkpoint to `results/benchmark.tsv`
+(with the git commit). Options: `--positions`, `--attempts`, `--max-steps`,
+`--raw-grip`, `--no-log`.
+
+## Evaluation
+
+**Protocol** (`scripts/benchmark.py`):
+
+- **Positions:** 200 cube positions drawn with rng seed 2026 from the training
+  range (x 0.47–0.63 m, y ±0.15 m). Reporting only, never debugging.
+- **Attempts:** up to 3 per position, 700 steps (14 s) each.
+- **Retries:** the sim and policy are deterministic, so re-running from the
+  same start would replay the same failure. A retry starts from where the last
+  attempt left things: the arm returns home with the gripper open, and the
+  cube stays wherever it ended up (pushed, dropped, tilted).
+
+**Stages**, one point each; the furthest stage reached counts:
+
+| Stage | Condition |
+|---|---|
+| reach | TCP within 15 mm of the cube centre in xy and 20 mm in z |
+| close | gripper commanded closed while at the grasp pose |
+| grasp | finger opening 30–50 mm while at the grasp pose |
+| rise | cube centre 10 mm above its resting height |
+| lift | cube centre 100 mm above its resting height |
+| hold | lift sustained for 50 steps (1 s) with both fingers on the cube |
+
+**Metrics:**
+
+- **Stage score**: points from stages reached on attempt 1, out of 6,
+  averaged over positions (%). *How far does the policy get?* It gives partial
+  credit (always grasping but never lifting scores 50, never reaching scores
+  0) but hides which stage fails.
+- **Stage funnel**: % of positions reaching each stage on attempt 1. *Where
+  does it fail?* The biggest drop between two stages locates the failure. This
+  is how both of the v1 → v3 bugs were found.
+- **Success@1**: hold reached on the first attempt. *How good is the skill
+  on its own?* The headline measure of the skill with no help.
+- **Success@3**: hold reached within 3 attempts. *Does it get there with a
+  retry loop?* This measures the policy inside a minimal harness.
+  Success@3 − Success@1 shows how recoverable its failures are.
+- **Mean attempts**: attempts used, over positions that eventually succeed.
+  *What does success cost?* Retries cost time and, on hardware, wear. It
+  ignores failed positions, so read it next to Success@3.
+- **Lifted@1**: cube 10 cm up on any single frame of attempt 1 (the original
+  metric). It links to all earlier results. Lifted@1 − Success@1 counts drops
+  and lifts too late to finish the hold.
+
+How they fit together:
+
+| Question | Metric |
+|---|---|
+| How good is the skill alone? | Success@1 |
+| How close do the failures get? | Stage score |
+| Where does it break? | Stage funnel |
+| Can a retry loop rescue it? | Success@3 − Success@1 |
+| What does rescue cost? | Mean attempts |
+| Does it hold on, or just touch the threshold? | Lifted@1 − Success@1 |
+
+The retry gap is an early form of the harness's *recovery rate*, and the funnel
+an early form of *failure attribution* (see [PLAN.md](PLAN.md)).
 
 ## Setup
 
@@ -74,7 +192,9 @@ python collect_demos.py --episodes 3000 --out ../demos/clean3000.npz
 
 - Physics 500 Hz, policy 50 Hz (10 substeps per action).
 - Cube placed uniformly in x 0.47–0.63 m, y ±0.15 m, unrotated.
-- Success: cube centre rises 10 cm above its resting height (`env.lifted()`).
+- Success: cube lifted 10 cm and held for 1 s with both fingers on it (see
+  [Evaluation](#evaluation)). Earlier results use the lenient single-frame
+  check `env.lifted()`.
 - Expert success: 100% (failed demos are discarded at collection time).
 - Expert phases: hover, descend, close (hold 120 steps), lift.
 
@@ -127,9 +247,11 @@ success.
 
 ```
 scripts/   env, scripted expert, demo collection, BC training (train_bc.py),
-           eval (eval_bc.py), failure diagnosis (diag_collapse.py), video
+           held-out benchmark (benchmark.py, plot_benchmark.py), quick eval
+           on the debug set (eval_bc.py), failure diagnosis (diag_collapse.py),
+           video
 models/    Panda + cube scene (MuJoCo Menagerie based) and BC checkpoints
-results/   sweep outputs
+results/   benchmark results and plot, dataset sweep
 videos/    v1.0 and v3.0 rollout videos and README previews
 ```
 

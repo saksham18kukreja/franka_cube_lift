@@ -76,8 +76,9 @@ These are the hypotheses the phases are designed to test.
    perception, verification. Track the counts; they show where the
    bottleneck is.
 7. **Keep defaults backward compatible.** New behaviour goes behind a flag.
-8. **Log it.** One row per run in `results/experiments.tsv`, checkpoints in
-   `models/`, and a line in the Log below.
+8. **Log it.** Benchmark every new version with `scripts/benchmark.py` (one
+   row per checkpoint in `results/benchmark.tsv`), put checkpoints in
+   `models/`, and add a line to the Log below.
 9. **Versioning.** Minor bump for eval or rollout changes, major bump for a
    new model, input, loss, dataset or harness component. Tag the commit.
 
@@ -96,15 +97,16 @@ These are the hypotheses the phases are designed to test.
 ## Where we are
 
 **Skill #1: cube lift, v3.0.** State-based MLP, 21 inputs, BCE gripper,
-steps-since-closed counter. 100% on 3/3 seeds on the standard 50-position eval.
+steps-since-closed counter. **100% Success@1 on 3/3 seeds on the held-out
+benchmark** (200 unseen positions, strict hold-for-1-s success; 600/600).
 
 Limits of that 100%:
 
-- Measured on the same 50 positions we debugged on (Phase 0 fixes this).
 - Reads the exact cube position from the simulator (Phase 4 removes this).
-- Narrow task: unrotated cube, no noise or disturbances.
+- Narrow task: unrotated cube, no noise or disturbances, and positions only
+  within the training range. A dropped cube can land outside it, and the
+  policy can't recover from there (seen in v2.0 retries).
 - The counter depends on the expert's fixed 120-step hold.
-- Lenient success check: height only, for a single frame.
 
 ## Roadmap
 
@@ -112,15 +114,18 @@ Limits of that 100%:
 
 The harness is only as good as its success signal, so this comes first.
 
-- [ ] **Held-out test set:** 200 new cube positions (different rng seed) used
-      only to report versions. Re-score v1.0–v3.0 on it.
-- [ ] **Strict success:** cube above the threshold for 50 consecutive steps
-      (1 s) with both fingers in contact.
-- [ ] **`results/experiments.tsv`** logging date, version, commit, flags, seed,
-      val_dq, grip_acc, success_eval50, success_test200, success_strict.
+- [x] **Held-out test set:** 200 new cube positions (rng seed 2026) used
+      only to report versions. v1.0–v3.0 re-scored (`scripts/benchmark.py`).
+- [x] **Strict success:** cube above the threshold for 50 consecutive steps
+      (1 s) with both fingers in contact ("hold" stage).
+- [x] **Stage score, Success@1/@3 with retries, mean attempts** (defined in
+      README → Evaluation).
+- [x] **Results log:** `results/benchmark.tsv`, one row per checkpoint, with
+      the git commit. Plot: `scripts/plot_benchmark.py`.
 - [ ] **Git tags** v1.0, v1.1, v2.0, v3.0.
 
-Done when: v3.0 has test-set and strict-success numbers, both logged.
+Done when: v3.0 has test-set and strict-success numbers, both logged. **Met;
+only the tags remain.**
 
 ### Phase 1: Skill interface and library
 
@@ -223,6 +228,9 @@ needs it.
 - **Diagnose by stage.** Breaking rollouts into reach / close / grasp / rise
   / lift found both failures quickly. The harness needs the same kind of
   failure attribution.
+- **A retry only helps if the failure leaves a state the skill can handle.**
+  v2.0's dropped cubes landed outside the training range and retries couldn't
+  recover them. This is the handoff bottleneck, seen already with one skill.
 
 ## Log
 
@@ -235,3 +243,4 @@ needs it.
 | 2026-09-26 | v2.0 | BCE gripper, `both` frame | 90.7%; the "grasp then freeze" failure appears |
 | 2026-09-27 | v3.0 | Steps-since-closed input | 100% (3/3 seeds, standard eval) |
 | 2026-09-28 | — | Project goal set: agentic robotics harness; plan rewritten | — |
+| 2026-09-28 | — | Held-out benchmark (200 positions, stages, strict hold, 3 attempts) | Success@1: v1.0 58.7, v1.1 89.0, v2.0 86.8, v3.0 100% |
