@@ -4,6 +4,9 @@ Behaviour cloning on a Franka Panda cube-lift task in MuJoCo. A scripted
 controller (`scripts/controller.py`) generates demonstrations; an MLP policy
 (`scripts/train_bc.py`) learns to imitate it from state.
 
+This cube-lift policy is the first skill of a larger goal: a harness for an
+agentic robotics system. See [PLAN.md](PLAN.md) for the roadmap.
+
 [![BC policy v3.0 lifting the cube](videos/bc_both_bce_time_preview.gif)](videos/bc_both_bce_time.mp4)
 
 *Policy v3.0 (seed 0, 100% success), two eval episodes in real time. Click for
